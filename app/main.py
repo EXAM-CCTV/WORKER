@@ -25,6 +25,7 @@ import httpx
 
 from app.config import HTTP_PORT, MAIN_BACKEND_URL, POLL_INTERVAL_MS, SCRIPTS_DIR, WORKER_ID, WORKER_NAME
 from app.logger import logger
+from app.errors import register_error_handlers
 from app.log_manager import log_manager
 from app.poller import poller_service, IS_MAIN_WORKER
 from app.gpu_monitor import get_local_gpu_stats_data
@@ -958,6 +959,10 @@ app = FastAPI(
     lifespan=lifespan,
     root_path="/cctv_dev"
 )
+
+# Error code library: request ids + { success, message, code, title, action, requestId,
+# detail } on every error reply (see app/errors.py).
+register_error_handlers(app)
 
 # ── Detection image directories ──────────────────────────────
 RESULTS_DIR = Path(SCRIPTS_DIR).resolve() / "detection" / "results" / "tcs_detections"
