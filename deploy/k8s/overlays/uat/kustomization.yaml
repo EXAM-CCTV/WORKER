@@ -16,7 +16,7 @@ patches:
     patch: |-
       - op: replace
         path: /data/MAIN_BACKEND_URL
-        value: http://192.168.19.30:4000/prod_cctv/api
+        value: http://192.168.19.30:4000/cctv_analytics/api
       # --- SMOKE TEST (2026-09-22): hash-mode distribution across worker-0 (this main
       # VM, Compose) + worker-1 (this pod, k8s). Reverts to COORDINATION_MODE=lease once
       # lease-based sharding has been proven; see docs/kubernetes_scaling_guide.md §5.

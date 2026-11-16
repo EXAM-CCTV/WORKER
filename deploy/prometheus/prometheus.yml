@@ -18,7 +18,7 @@ scrape_configs:
     scrape_interval: 30s
     scrape_timeout: 20s
     http_sd_configs:
-      - url: http://host.docker.internal:4000/prod_cctv/api/fleet/prometheus/sd?kind=workers
+      - url: http://host.docker.internal:4000/cctv_analytics/api/fleet/prometheus/sd?kind=workers
         refresh_interval: 60s
 
   - job_name: fleet-nodes
@@ -26,7 +26,7 @@ scrape_configs:
     scrape_interval: 30s
     scrape_timeout: 15s
     http_sd_configs:
-      - url: http://host.docker.internal:4000/prod_cctv/api/fleet/prometheus/sd?kind=nodes
+      - url: http://host.docker.internal:4000/cctv_analytics/api/fleet/prometheus/sd?kind=nodes
         refresh_interval: 60s
 
   - job_name: gpu-workers

@@ -91,7 +91,7 @@ Dockerfile, same image, same environment variables it always had
                                        │
                                        │ same HTTP calls as always
                                        ▼
-                     Backend (this main VM) — /prod_cctv/api/*
+                     Backend (this main VM) — /cctv_analytics/api/*
                      MySQL, fleet registry, executions, etc.
 ```
 
@@ -265,7 +265,7 @@ From the main VM, without SSHing anywhere, the fastest health check is the backe
 itself (same data the GPU Monitor page reads):
 
 ```bash
-curl -s localhost:4000/prod_cctv/api/gpu-monitor/stats | python3 -c "
+curl -s localhost:4000/cctv_analytics/api/gpu-monitor/stats | python3 -c "
 import sys,json
 for s in json.load(sys.stdin)['data']['servers']:
     print(s['server_id'], s['status'], s.get('hostname'))"
