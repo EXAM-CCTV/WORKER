@@ -93,6 +93,9 @@ jobs:
       - name: Deploy container (Compose v2)
         run: |
           cd "$DEPLOY_DIR"
+          # optional extra compose file (repo variable COMPOSE_OVERRIDE), e.g. a host-specific GPU override
+          OVERRIDE="${{ vars.COMPOSE_OVERRIDE }}"
+          OPT=(); [ -n "$OVERRIDE" ] && OPT=(-f "$OVERRIDE")
           IMAGE="$IMAGE" IMAGE_TAG="$IMAGE_TAG" \
-            docker compose --project-directory "$DEPLOY_DIR" -f "$COMPOSE_FILE" up -d
-          docker compose --project-directory "$DEPLOY_DIR" -f "$COMPOSE_FILE" ps
+            docker compose --project-directory "$DEPLOY_DIR" -f "$COMPOSE_FILE" "${OPT[@]}" up -d
+          docker compose --project-directory "$DEPLOY_DIR" -f "$COMPOSE_FILE" "${OPT[@]}" ps
