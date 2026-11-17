@@ -42,7 +42,6 @@ jobs:
     runs-on:
       - self-hosted
       - ${{ github.ref_name == 'develop' && 'cctv-dev' || 'cctv-uat' }}
-      - gpu
     permissions:
       contents: read
       packages: write
