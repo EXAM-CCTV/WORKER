@@ -42,7 +42,23 @@ echo "First run downloads ~62GB; warm start loads from cache."
 ps -eo pid=,ppid=,args= | awk '$2 == 1 && /spawn_main/ && /--multiprocessing-fork/ {print $1}' | xargs -r kill -9 2>/dev/null || true
 sleep 1
 
-exec vllm serve Qwen/Qwen3-VL-30B-A3B-Instruct \
+# Blackwell GPUs (B200/B300, compute capability 10.x+) need two attention overrides in this image
+# (vLLM 0.20.2, no nvcc). Verified on a B300 (19 Nov): healthy in 70 s, real CCTV frame classified in 9 s.
+#   --mm-encoder-attn-backend TORCH_SDPA: on Blackwell the vision encoder otherwise picks FlashAttention's
+#     CuTe-DSL path, which crashes on import with the bundled nvidia-cutlass-dsl 4.8.0
+#     ("module 'cutlass.cute.core' has no attribute 'ThrMma'").
+#   --attention-backend TRITON_ATTN: the default FlashInfer has no prebuilt kernel for sm_103 and tries to
+#     JIT-compile one with nvcc, which is not in the image ("/usr/local/cuda/bin/nvcc: not found").
+# Hopper (H200, 9.0) keeps the defaults. VLLM_EXTRA_ARGS adds any other flags without a new image.
+ARCH_ARGS=()
+CC="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -1 | tr -d ' ')"
+if [ "${CC%%.*}" -ge 10 ] 2>/dev/null; then
+    echo "GPU compute capability $CC (Blackwell): SDPA vision attention + Triton attention"
+    ARCH_ARGS=(--mm-encoder-attn-backend TORCH_SDPA --attention-backend TRITON_ATTN)
+fi
+
+# shellcheck disable=SC2086  # VLLM_EXTRA_ARGS is a space-separated flag list on purpose
+exec vllm serve Qwen/Qwen3-VL-30B-A3B-Instruct "${ARCH_ARGS[@]}" ${VLLM_EXTRA_ARGS:-} \
     --port 8001 \
     --host 0.0.0.0 \
     --max-model-len 8192 \
