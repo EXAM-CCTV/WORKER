@@ -66,7 +66,20 @@ def _capabilities() -> dict:
         "network": os.getenv("FLEET_NETWORK", "lan").strip().lower() or "lan",
         "cuda_visible_devices": os.getenv("CUDA_VISIBLE_DEVICES", ""),
         "max_concurrent": os.getenv("MAX_CONCURRENT", ""),
+        # True only when this worker was explicitly made the main one (legacy name worker-0 / IS_MAIN_WORKER=1).
+        # The backend then does not elect another: see services/fleet.js electMain and app/poller.py.
+        "main_explicit": _explicit_main(),
+        # This worker obeys the backend's main-worker election (older images ignore it, so they are never elected).
+        "main_election": True,
     }
+
+
+def _explicit_main() -> bool:
+    try:
+        from app.poller import EXPLICIT_MAIN_WORKER    # imported late: poller itself imports this module's package
+        return bool(EXPLICIT_MAIN_WORKER)
+    except Exception:
+        return False
 
 
 def _gpu_snapshot() -> dict:
@@ -143,7 +156,9 @@ class FleetAgent:
         )
         resp.raise_for_status()
         self._registered = True
-        await self._apply_status(((resp.json() or {}).get("data") or {}).get("status"))
+        reg = (resp.json() or {}).get("data") or {}
+        self._apply_main(reg)
+        await self._apply_status(reg.get("status"))
         logger.info(f"fleet: registered {self.worker_id} with backend (heartbeat every {HEARTBEAT_INTERVAL_S}s)")
         return True
 
@@ -162,9 +177,17 @@ class FleetAgent:
             return
         resp.raise_for_status()
         data = (resp.json() or {}).get("data") or {}
+        self._apply_main(data)
         await self._apply_status(data.get("status"))
         if data.get("restart"):
             await self._restart(data.get("restart_reason") or "Fleet page")
+
+    @staticmethod
+    def _apply_main(data: dict) -> None:
+        """The backend's election result; an older backend sends none, which leaves the worker as it was."""
+        if "main_worker" in data:
+            from app.poller import set_elected_main
+            set_elected_main(data.get("main_worker"))
 
     async def _restart(self, reason) -> None:
         """Restart asked on the Fleet page (Restart / Update / camera split) for a server without

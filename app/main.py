@@ -27,7 +27,7 @@ from app.config import HTTP_PORT, MAIN_BACKEND_URL, POLL_INTERVAL_MS, SCRIPTS_DI
 from app.logger import logger
 from app.errors import register_error_handlers
 from app.log_manager import log_manager
-from app.poller import poller_service, IS_MAIN_WORKER
+from app.poller import poller_service, is_main_worker
 from app.gpu_monitor import get_local_gpu_stats_data
 from scripts.detection.utils.db_client import get_hls_camera_by_ch_code, get_rtsp_camera_by_id, get_hls_cameras, get_rtsp_cameras, get_rtsp_camera_by_device_and_ch, _get_connection
 
@@ -1148,7 +1148,7 @@ async def cancel_execution(execution_id: str, forwarded: bool = False):
     poller_service.running_scripts.discard(execution_id)
 
     # Mark CANCELLED in the main backend DB
-    if IS_MAIN_WORKER and not forwarded:
+    if is_main_worker() and not forwarded:
         await poller_service.update_assignment_status(
             execution_id, "CANCELLED", {"error_log": "Manually cancelled via API"}
         )

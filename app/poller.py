@@ -11,12 +11,33 @@ from app.script_runner import script_runner
 from app.camera_distributor import should_process_camera
 
 WORKER_ID = os.environ.get("WORKER_ID", "worker-0")
-# Only the main worker writes RUNNING/COMPLETED status back (feeds the Executions tab).
-# A single-worker stack (uat/dev) has a differently named worker, so allow an env override.
-IS_MAIN_WORKER = (
+# Only the main worker writes RUNNING/COMPLETED/FAILED status back (feeds the Executions tab). Exactly ONE worker in
+# the fleet may do it, and no worker needs special configuration for it: every Fleet worker runs the same image
+# with the same settings, and the BACKEND elects the main one (the lowest worker id among the healthy workers) and
+# tells each worker in its register / heartbeat reply (app/fleet_agent.py calls set_elected_main). If the main worker
+# dies the next one takes over within about a minute. Deploying more servers needs no change anywhere.
+# Explicit, non-Fleet ways still work and win (the election then stands down, see backend services/fleet.js):
+#   - the legacy worker names worker-0 / main;
+#   - IS_MAIN_WORKER=1 in a worker's own env (a single-worker stack: uat/dev).
+EXPLICIT_MAIN_WORKER = (
     WORKER_ID in ("worker-0", "main")
     or os.environ.get("IS_MAIN_WORKER", "").strip().lower() in ("1", "true", "yes")
 )
+_elected_main = False
+
+
+def set_elected_main(value) -> None:
+    """Called by the Fleet agent with the backend's decision (every register / heartbeat reply)."""
+    global _elected_main
+    value = bool(value)
+    if value != _elected_main:
+        logger.info(f"fleet: this worker is {'now' if value else 'no longer'} the main worker (writes assignment status)")
+    _elected_main = value
+
+
+def is_main_worker() -> bool:
+    return EXPLICIT_MAIN_WORKER or _elected_main
+
 
 # Capture-once scaling: collapse all of a shift's detection analytics into ONE
 # master_pipeline process per worker (shared YOLO, fan-out to every analytic)
@@ -295,7 +316,7 @@ class Poller:
 
     async def _session_status_tick(self):
         """Each member of a running session: RUNNING at its own start, COMPLETED at its own end."""
-        if not (SHIFT_SESSION and IS_MAIN_WORKER):
+        if not (SHIFT_SESSION and is_main_worker()):
             return
         now = time.time()
         for key, rec in list(self.sessions.items()):
@@ -497,7 +518,7 @@ class Poller:
                 # late/restarted workers can finish their camera shard (see
                 # run_assignment); this closes it once the window is over so it
                 # doesn't linger as RUNNING forever.
-                if IS_MAIN_WORKER:
+                if is_main_worker():
                     for a in running_data:
                         aid = str(a["id"])
                         if (self._is_vision(a)
@@ -671,7 +692,7 @@ class Poller:
             logger.info(f"▶ Running assignment {assignment_id}: {assignment.get('task_name', 'Unknown task')}")
 
             # Only main worker updates global status to RUNNING
-            if IS_MAIN_WORKER:
+            if is_main_worker():
                 await self._update_status_all(assignment, "RUNNING")
 
             # Claim the camera shards this worker will own (plan §4.2). No-op
@@ -717,13 +738,13 @@ class Poller:
             # stragglers catch up via /executions/running; a sweep (see poll())
             # marks it COMPLETED once the window ends. Non-vision detectors re-run
             # every frequency cycle, so they still complete immediately.
-            if IS_MAIN_WORKER and (not is_vision or self._shift_window_closed(assignment)):
+            if is_main_worker() and (not is_vision or self._shift_window_closed(assignment)):
                 await self._update_status_all(assignment, "COMPLETED", {"result_data": result})
 
         except Exception as e:
             if "__TIMEOUT_COMPLETED__" in str(e):
                 logger.info(f"✔ Assignment {assignment_id} timed out after duration — marking COMPLETED")
-                if IS_MAIN_WORKER:
+                if is_main_worker():
                     await self._update_status_all(assignment, "COMPLETED", {"result_data": {"note": "Script ran for full duration"}})
                 # A clean duration-timeout is a successful run.
                 self._crash_tracker.pop(assignment_id, None)
@@ -735,7 +756,7 @@ class Poller:
                 if is_vision:
                     # Vision is one-shot (completed_scripts) — a crash here is
                     # terminal, same as before.
-                    if IS_MAIN_WORKER:
+                    if is_main_worker():
                         await self._update_status_all(assignment, "FAILED", {"error_log": str(e)})
                 else:
                     # --- Crash backoff: track failures for restartable detectors ---
@@ -767,7 +788,7 @@ class Poller:
                     # FAILED, which getPending/getRunning both exclude, so it was
                     # never picked up again for the rest of its window.
                     window_closed = self._shift_window_closed(assignment)
-                    if IS_MAIN_WORKER:
+                    if is_main_worker():
                         if quarantined or window_closed:
                             await self._update_status_all(assignment, "FAILED", {"error_log": str(e)})
                         else:

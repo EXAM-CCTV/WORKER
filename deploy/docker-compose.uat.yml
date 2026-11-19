@@ -5,8 +5,18 @@
 # Deploy with Compose v2 (v1 cannot recreate: KeyError 'ContainerConfig'):
 #   docker compose --project-directory /data/new_dev/worker -f deploy/docker-compose.uat.yml up -d
 # --project-directory is required: compose resolves env_file/./paths from the project dir.
+#
+# p005 (19 Nov 2026): this host's detection workers are now Fleet-managed (Fleet page -> Add server -> server
+# "worker-b300": lease mode, NUMA-pinned, vision on, controlled from the Fleet page). The CI-deployed
+# worker-gpu0 below is therefore OFF by default (compose profile "legacy-worker"): `up -d` neither starts nor
+# recreates it, but the service stays defined so /data/new_dev/p005/docker-compose.p005.override.yml (host-specific
+# GPU override, also names worker-gpu0) keeps validating. The camera-uptime checker below stays CI-managed: the
+# backend's Camera Uptime page reads it on 127.0.0.1:8096.
+# To run the legacy worker again (not together with Fleet workers: it is hash mode, TOTAL_WORKERS=1, so it would
+# process every camera a second time):  docker compose ... --profile legacy-worker up -d worker-gpu0
 services:
   worker-gpu0:
+    profiles: ["legacy-worker"]
     image: ${IMAGE:-cctv-worker}:${IMAGE_TAG:-uat}
     container_name: cctv_uat_worker_gpu0
     restart: unless-stopped
